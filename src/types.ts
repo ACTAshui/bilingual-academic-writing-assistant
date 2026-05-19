@@ -32,3 +32,34 @@ export type StyleProfile = {
   terms: string[];
   brief: string;
 };
+
+export type AiProvider =
+  | "mock"
+  | "openai-compatible"
+  | "custom-endpoint"
+  | "google-style";
+
+export type AiAction =
+  | "translate"
+  | "polish"
+  | "style-rewrite"
+  | "explain";
+
+export type AiProviderConfig = {
+  provider: AiProvider;
+  model: string;
+  endpoint?: string;
+  apiKey?: string;
+};
+
+export type AiRequest = {
+  action: AiAction;
+  sourceZh: string;
+  draftEn?: string;
+  styleProfile?: StyleProfile;
+};
+
+export type AiResult = {
+  text: string;
+  notes: string;
+};
