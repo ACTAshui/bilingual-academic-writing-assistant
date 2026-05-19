@@ -4,8 +4,10 @@ import type { Paragraph } from "../types";
 import {
   createDownload,
   exportBilingualText,
+  exportChineseText,
   exportDocxBlob,
-  exportEnglishText
+  exportEnglishText,
+  selectParagraphRange
 } from "./exporters";
 
 describe("exporters", () => {
@@ -14,6 +16,7 @@ describe("exporters", () => {
       id: "p-1",
       sourceZh: "第一段。",
       draftEn: "First paragraph.",
+      detectedLanguage: "zh",
       status: "accepted",
       notes: [],
       history: ["First paragraph."]
@@ -22,6 +25,7 @@ describe("exporters", () => {
       id: "p-2",
       sourceZh: "第二段。",
       draftEn: "Second paragraph.",
+      detectedLanguage: "zh",
       status: "edited",
       notes: [],
       history: ["Second paragraph."]
@@ -32,6 +36,15 @@ describe("exporters", () => {
     expect(exportEnglishText(paragraphs)).toBe(
       "First paragraph.\n\nSecond paragraph."
     );
+  });
+
+  it("exports Chinese-only text from current source state", () => {
+    expect(exportChineseText(paragraphs)).toBe("第一段。\n\n第二段。");
+  });
+
+  it("selects a 1-based inclusive export range", () => {
+    expect(selectParagraphRange(paragraphs, 2, 2)).toEqual([paragraphs[1]]);
+    expect(selectParagraphRange(paragraphs, 3, 1)).toEqual(paragraphs);
   });
 
   it("exports aligned bilingual text from current editor state", () => {
@@ -52,6 +65,15 @@ describe("exporters", () => {
 
     await expect(zip.file("word/document.xml")?.async("string")).resolves.toContain(
       "First paragraph."
+    );
+  });
+
+  it("generates a Chinese docx blob", async () => {
+    const blob = await exportDocxBlob(paragraphs, "chinese");
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+
+    await expect(zip.file("word/document.xml")?.async("string")).resolves.toContain(
+      "第一段。"
     );
   });
 });

@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAiPrompt,
   getProviderOptions,
+  getQuickTranslationOptions,
+  runQuickTranslation,
   runAiAction
 } from "./aiAdapters";
 import type { StyleProfile } from "../types";
@@ -17,10 +19,32 @@ describe("aiAdapters", () => {
 
   it("exposes selectable provider options", () => {
     expect(getProviderOptions()).toEqual([
-      { value: "mock", label: "Mock local assistant" },
-      { value: "openai-compatible", label: "OpenAI-compatible API" },
-      { value: "custom-endpoint", label: "Custom endpoint" },
-      { value: "google-style", label: "Google Translate-style endpoint" }
+      { value: "anthropic", label: "Anthropic Claude" },
+      { value: "baidu-qianfan", label: "Baidu Qianfan（文心）" },
+      { value: "custom-endpoint", label: "Custom API（自定义）" },
+      { value: "deepseek", label: "DeepSeek API" },
+      { value: "google-gemini", label: "Google Gemini" },
+      { value: "groq", label: "Groq" },
+      { value: "minimax", label: "MiniMax" },
+      { value: "mistral", label: "Mistral" },
+      { value: "moonshot", label: "Moonshot Kimi" },
+      { value: "mock", label: "Mock Local（演示）" },
+      { value: "openai", label: "OpenAI" },
+      { value: "openrouter", label: "OpenRouter" },
+      { value: "qwen", label: "Qwen DashScope（通义千问）" },
+      { value: "siliconflow", label: "SiliconFlow" },
+      { value: "stepfun", label: "StepFun" },
+      { value: "tencent-hunyuan", label: "Tencent Hunyuan（混元）" },
+      { value: "volcengine-ark", label: "Volcengine Ark（豆包）" },
+      { value: "xai", label: "xAI Grok" },
+      { value: "zhipu", label: "Zhipu GLM（智谱）" }
+    ]);
+  });
+
+  it("exposes quick translation providers", () => {
+    expect(getQuickTranslationOptions()).toEqual([
+      { value: "google-public", label: "Google 公共快速翻译（免密）" },
+      { value: "mymemory", label: "MyMemory 快速翻译（免密备用）" }
     ]);
   });
 
@@ -42,10 +66,29 @@ describe("aiAdapters", () => {
     await expect(
       runAiAction(
         { provider: "mock", model: "local-mock" },
-        { action: "translate", sourceZh: "我们提出一种方法。", styleProfile }
+        {
+          action: "translate",
+          sourceText: "我们提出一种方法。",
+          targetLanguage: "en",
+          styleProfile
+        }
       )
     ).resolves.toMatchObject({
       text: expect.stringContaining("Academic translation")
+    });
+
+    await expect(
+      runAiAction(
+        { provider: "mock", model: "local-mock" },
+        {
+          action: "translate",
+          sourceText: "This study proposes a robust framework.",
+          targetLanguage: "zh",
+          styleProfile
+        }
+      )
+    ).resolves.toMatchObject({
+      text: expect.stringContaining("中文学术译文")
     });
 
     await expect(
@@ -58,6 +101,103 @@ describe("aiAdapters", () => {
     });
   });
 
+  it("uses the public online translation provider for real Chinese output", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          responseData: {
+            translatedText: "本研究提出了一种稳健的框架。"
+          },
+          responseStatus: 200
+        })
+      )
+    );
+
+    await expect(
+      runAiAction(
+        { provider: "google-style", model: "online-translate" },
+        {
+          action: "translate",
+          sourceText: "This study proposes a robust framework.",
+          targetLanguage: "zh"
+        }
+      )
+    ).resolves.toMatchObject({
+      text: "本研究提出了一种稳健的框架。",
+      notes: expect.stringContaining("在线翻译接口")
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("langpair=en%7Czh-CN")
+    );
+  });
+
+  it("runs quick Google-style translation without the LLM prompt", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json([
+          [["This study proposes a robust framework.", "本研究提出了一种稳健的框架。"]]
+        ])
+      )
+    );
+
+    await expect(
+      runQuickTranslation({
+        provider: "google-public",
+        sourceText: "本研究提出了一种稳健的框架。",
+        targetLanguage: "en"
+      })
+    ).resolves.toMatchObject({
+      text: "This study proposes a robust framework.",
+      notes: expect.stringContaining("Google")
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("translate.googleapis.com")
+    );
+  });
+
+  it("normalizes DeepSeek base URL to chat completions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          choices: [{ message: { content: "本研究提出了一种稳健的框架。" } }]
+        })
+      )
+    );
+
+    await expect(
+      runAiAction(
+        {
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          endpoint: "https://api.deepseek.com",
+          apiKey: "sk-test"
+        },
+        {
+          action: "translate",
+          sourceText: "This study proposes a robust framework.",
+          targetLanguage: "zh"
+        }
+      )
+    ).resolves.toMatchObject({
+      text: "本研究提出了一种稳健的框架。"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.deepseek.com/chat/completions",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer sk-test"
+        })
+      })
+    );
+  });
+
   it("uses style profile cues in mock style rewrites", async () => {
     const result = await runAiAction(
       { provider: "mock", model: "local-mock" },
@@ -65,7 +205,7 @@ describe("aiAdapters", () => {
     );
 
     expect(result.text).toContain("finite element analysis");
-    expect(result.notes).toContain("Applied reference-paper style cues.");
+    expect(result.notes).toContain("已应用参考论文");
   });
 
   it("rejects real provider calls without endpoint settings", async () => {
@@ -76,4 +216,8 @@ describe("aiAdapters", () => {
       )
     ).rejects.toThrow("Endpoint is required");
   });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

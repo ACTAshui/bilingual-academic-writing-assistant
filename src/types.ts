@@ -1,11 +1,19 @@
 export type ParagraphStatus = "empty" | "drafted" | "edited" | "accepted";
+export type TextLanguage = "zh" | "en" | "mixed" | "empty";
+export type EditSide = "zh" | "en";
+
+export type ParagraphNote = {
+  side: EditSide;
+  text: string;
+};
 
 export type Paragraph = {
   id: string;
   sourceZh: string;
   draftEn: string;
+  detectedLanguage: TextLanguage;
   status: ParagraphStatus;
-  notes: string[];
+  notes: ParagraphNote[];
   history: string[];
 };
 
@@ -34,10 +42,29 @@ export type StyleProfile = {
 };
 
 export type AiProvider =
+  | "anthropic"
+  | "baidu-qianfan"
   | "mock"
-  | "openai-compatible"
+  | "deepseek"
+  | "google-gemini"
+  | "groq"
+  | "minimax"
+  | "mistral"
+  | "moonshot"
+  | "openai"
+  | "openrouter"
+  | "qwen"
+  | "siliconflow"
+  | "stepfun"
+  | "tencent-hunyuan"
+  | "volcengine-ark"
+  | "xai"
+  | "zhipu"
   | "custom-endpoint"
+  | "openai-compatible"
   | "google-style";
+
+export type QuickTranslationProvider = "google-public" | "mymemory";
 
 export type AiAction =
   | "translate"
@@ -54,8 +81,10 @@ export type AiProviderConfig = {
 
 export type AiRequest = {
   action: AiAction;
-  sourceZh: string;
+  sourceZh?: string;
+  sourceText?: string;
   draftEn?: string;
+  targetLanguage?: "zh" | "en";
   styleProfile?: StyleProfile;
 };
 

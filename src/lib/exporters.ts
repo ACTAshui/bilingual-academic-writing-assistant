@@ -13,6 +13,13 @@ export function exportEnglishText(paragraphs: Paragraph[]): string {
     .join("\n\n");
 }
 
+export function exportChineseText(paragraphs: Paragraph[]): string {
+  return paragraphs
+    .map((paragraph) => paragraph.sourceZh.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export function exportBilingualText(paragraphs: Paragraph[]): string {
   return paragraphs
     .map(
@@ -20,6 +27,24 @@ export function exportBilingualText(paragraphs: Paragraph[]): string {
         `# Paragraph ${index + 1}\nZH: ${paragraph.sourceZh.trim()}\nEN: ${paragraph.draftEn.trim()}`
     )
     .join("\n\n");
+}
+
+export function selectParagraphRange(
+  paragraphs: Paragraph[],
+  start: number,
+  end: number
+): Paragraph[] {
+  if (paragraphs.length === 0) return [];
+
+  const normalizedStart = Number.isFinite(start) ? Math.trunc(start) : 1;
+  const normalizedEnd = Number.isFinite(end) ? Math.trunc(end) : paragraphs.length;
+  const lower = Math.max(1, Math.min(normalizedStart, normalizedEnd));
+  const upper = Math.min(
+    paragraphs.length,
+    Math.max(normalizedStart, normalizedEnd)
+  );
+
+  return paragraphs.slice(lower - 1, upper);
 }
 
 export function createDownload(
@@ -38,7 +63,7 @@ export function createDownload(
 
 export async function exportDocxBlob(
   paragraphs: Paragraph[],
-  mode: "english" | "bilingual"
+  mode: "chinese" | "english" | "bilingual"
 ): Promise<Blob> {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", contentTypesXml());
@@ -72,12 +97,17 @@ function toBlobPart(content: string | Uint8Array): BlobPart {
   ) as ArrayBuffer;
 }
 
-function documentXml(paragraphs: Paragraph[], mode: "english" | "bilingual") {
+function documentXml(
+  paragraphs: Paragraph[],
+  mode: "chinese" | "english" | "bilingual"
+) {
   const body = paragraphs
     .flatMap((paragraph) =>
-      mode === "english"
-        ? [paragraph.draftEn]
-        : [`ZH: ${paragraph.sourceZh}`, `EN: ${paragraph.draftEn}`]
+      mode === "chinese"
+        ? [paragraph.sourceZh]
+        : mode === "english"
+          ? [paragraph.draftEn]
+          : [`ZH: ${paragraph.sourceZh}`, `EN: ${paragraph.draftEn}`]
     )
     .filter((line) => line.trim())
     .map(

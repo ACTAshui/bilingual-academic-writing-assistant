@@ -22,19 +22,103 @@ export function detectFileType(fileName: string): SupportedFileType {
 }
 
 export function parsePlainText(text: string): string {
-  return text;
+  return cleanExtractedText(text);
 }
 
+const removableBlockEnvironments = [
+  "align",
+  "alignat",
+  "algorithm",
+  "algorithmic",
+  "array",
+  "deluxetable",
+  "equation",
+  "figure",
+  "gather",
+  "longtable",
+  "lstlisting",
+  "multline",
+  "subequations",
+  "table",
+  "tabular",
+  "tabularx",
+  "threeparttable",
+  "tikzpicture",
+  "verbatim"
+].join("|");
+
 export function cleanTex(text: string): string {
-  return text
+  let body = text.replace(/%.*$/gm, "");
+  const documentStart = body.match(/\\begin\{document\}/);
+
+  if (documentStart?.index !== undefined) {
+    body = body.slice(documentStart.index + documentStart[0].length);
+  }
+
+  body = body
+    .replace(/\\end\{document\}[\s\S]*$/g, "")
+    .replace(/\\(?:title|author|date)\*?(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}/g, "")
+    .replace(/^\\(?:documentclass|usepackage)\b.*$/gm, "")
+    .replace(/\\maketitle\b/g, "");
+
+  return cleanExtractedText(body);
+}
+
+export function cleanExtractedText(text: string): string {
+  const body = text
     .replace(/%.*$/gm, "")
-    .replace(/\\(section|subsection|subsubsection|paragraph)\*?\{([^}]*)\}/g, "$2\n")
-    .replace(/\\(textbf|textit|emph|cite|ref|label)\{([^}]*)\}/g, "$2")
+    .replace(/\\end\{document\}[\s\S]*$/g, "")
+    .replace(/\\(?:title|author|date)\*?(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}/g, "")
+    .replace(/^\\(?:documentclass|usepackage)\b.*$/gm, "")
+    .replace(/\\maketitle\b/g, "")
+    .replace(
+      new RegExp(
+        `\\\\begin\\{(?:${removableBlockEnvironments})\\*?\\}[\\s\\S]*?\\\\end\\{(?:${removableBlockEnvironments})\\*?\\}`,
+        "g"
+      ),
+      ""
+    )
+    .replace(/\\(?:begin|end)\{abstract\}/g, "\n")
+    .replace(/\\(?:begin|end)\{[^}]+\}/g, "\n")
+    .replace(
+      /\\(section|subsection|subsubsection|paragraph)\*?(?:\[[^\]]*\])?\{([^}]*)\}/g,
+      "$2\n"
+    )
+    .replace(/~?\\(?:cite|parencite|textcite|autocite)\*?(?:\[[^\]]*\]){0,2}\{[^}]*\}/g, "")
+    .replace(/\\(?:ref|eqref|label)\*?(?:\[[^\]]*\])?\{[^}]*\}/g, "")
+    .replace(/\\\[[\s\S]*?\\\]/g, "")
+    .replace(/\\\([\s\S]*?\\\)/g, "")
+    .replace(/\$\$[\s\S]*?\$\$/g, "")
+    .replace(/\$[^$\n]*\$/g, "")
+    .replace(/\\\\/g, "\n")
+    .replace(/\\(textbf|textit|emph|underline|texttt)\{([^}]*)\}/g, "$2")
     .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{([^}]*)\})?/g, "$1")
     .replace(/[{}]/g, "")
+    .split(/\r?\n/)
+    .filter((line) => !isTexArtifactLine(line))
+    .join("\n")
+    .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  return body.trim();
+}
+
+function isTexArtifactLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+
+  return (
+    /(?:^|[^\\])&/.test(trimmed) ||
+    /(?:^|\s)>?\s*p\s*\(/i.test(trimmed) ||
+    /\\(?:toprule|midrule|bottomrule|hline|cline|addlinespace)\b/.test(trimmed) ||
+    /^\[\]@?$/.test(trimmed) ||
+    /^\[[a-z]\](?:\s+\w+)?$/i.test(trimmed) ||
+    /^@+$/.test(trimmed) ||
+    /@\s*$/.test(trimmed) ||
+    /^(?:term|meaning|meaning in this review|symbol|description|parameter|unit|value)$/i.test(trimmed)
+  );
 }
 
 export function extractPdfTextFromBytes(bytes: Uint8Array): string {
@@ -78,8 +162,8 @@ export async function parseUploadedFile(file: File): Promise<ParsedFile> {
       : type === "tex"
         ? cleanTex(new TextDecoder().decode(bytes))
         : type === "pdf"
-          ? extractPdfTextFromBytes(bytes)
-          : await parseDocxBytes(bytes);
+          ? cleanExtractedText(extractPdfTextFromBytes(bytes))
+          : cleanExtractedText(await parseDocxBytes(bytes));
 
   if (!text.trim()) {
     throw new Error("Imported file did not contain readable text");
