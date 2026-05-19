@@ -16,3 +16,19 @@ export type ParsedFile = {
   type: SupportedFileType;
   text: string;
 };
+
+export type ReferencePaper = {
+  id: string;
+  name: string;
+  type: SupportedFileType;
+  text: string;
+  wordCount: number;
+  status: "ready" | "error";
+};
+
+export type StyleProfile = {
+  referenceCount: number;
+  phrases: string[];
+  terms: string[];
+  brief: string;
+};
