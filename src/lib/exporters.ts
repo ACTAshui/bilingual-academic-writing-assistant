@@ -32,7 +32,7 @@ export function createDownload(
     blob:
       content instanceof Blob
         ? content
-        : new Blob([content], { type: mimeType })
+        : new Blob([toBlobPart(content)], { type: mimeType })
   };
 }
 
@@ -46,7 +46,7 @@ export async function exportDocxBlob(
   zip.folder("word")?.file("document.xml", documentXml(paragraphs, mode));
 
   const bytes = await zip.generateAsync({ type: "uint8array" });
-  const blob = new Blob([bytes], {
+  const blob = new Blob([toBlobPart(bytes)], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   }) as Blob & { arrayBuffer?: () => Promise<ArrayBuffer> };
 
@@ -59,6 +59,17 @@ export async function exportDocxBlob(
   }
 
   return blob;
+}
+
+function toBlobPart(content: string | Uint8Array): BlobPart {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content.buffer.slice(
+    content.byteOffset,
+    content.byteOffset + content.byteLength
+  ) as ArrayBuffer;
 }
 
 function documentXml(paragraphs: Paragraph[], mode: "english" | "bilingual") {
