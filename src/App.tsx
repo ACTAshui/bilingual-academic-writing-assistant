@@ -31,6 +31,7 @@ import type {
 import {
   clearParagraph,
   createParagraphs,
+  createSingleParagraph,
   getParagraph,
   replaceParagraphWithSegments,
   splitTextIntoSegments,
@@ -112,6 +113,7 @@ export default function App() {
   const [isProjectRailOpen, setIsProjectRailOpen] = useState(true);
   const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(true);
   const [isToolBarOpen, setIsToolBarOpen] = useState(true);
+  const [directPasteText, setDirectPasteText] = useState("");
   const [exportStart, setExportStart] = useState("1");
   const [exportEnd, setExportEnd] = useState("0");
   const [status, setStatus] = useState("就绪");
@@ -146,11 +148,7 @@ export default function App() {
     try {
       const parsed = await parseUploadedFile(file);
       const nextParagraphs = createParagraphs(parsed.text);
-      setParagraphs(nextParagraphs);
-      setSelectedId(nextParagraphs[0]?.id ?? null);
-      setCheckedIds([]);
-      setExportStart(nextParagraphs.length > 0 ? "1" : "0");
-      setExportEnd(String(nextParagraphs.length));
+      replaceManuscript(nextParagraphs);
       setStatus(`已导入 ${parsed.name}：${summarizeLanguages(nextParagraphs)}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "导入失败");
@@ -177,6 +175,38 @@ export default function App() {
     } finally {
       input.value = "";
     }
+  }
+
+  function handleDirectPasteImport(mode: "single" | "split") {
+    const text = directPasteText.trim();
+    if (!text) {
+      setStatus("请先在长文本粘贴区输入或粘贴内容。");
+      return;
+    }
+
+    const nextParagraphs =
+      mode === "single" ? createSingleParagraph(text) : createParagraphs(text);
+    if (nextParagraphs.length === 0) {
+      setStatus("未识别到可导入的正文内容。");
+      return;
+    }
+
+    replaceManuscript(nextParagraphs);
+    setDirectPasteText("");
+    setStatus(
+      mode === "single"
+        ? `已作为 1 段导入：${summarizeLanguages(nextParagraphs)}`
+        : `已按句拆分导入 ${nextParagraphs.length} 段：${summarizeLanguages(nextParagraphs)}`
+    );
+  }
+
+  function replaceManuscript(nextParagraphs: Paragraph[]) {
+    clearAutoTranslateTimers();
+    setParagraphs(nextParagraphs);
+    setSelectedId(nextParagraphs[0]?.id ?? null);
+    setCheckedIds([]);
+    setExportStart(nextParagraphs.length > 0 ? "1" : "0");
+    setExportEnd(String(nextParagraphs.length));
   }
 
   function handleSourceChange(id: string, value: string) {
@@ -896,6 +926,47 @@ export default function App() {
           </label>
           <p className="example-text">
             示例：上传 <strong>中文或英文</strong> 的 <strong>docx</strong>、<strong>txt</strong> 或 <strong>tex</strong>。
+          </p>
+          <label className="field paste-field">
+            <span>长文本粘贴区</span>
+            <textarea
+              aria-label="长文本粘贴区"
+              placeholder="在这里粘贴一段中文或英文。只需要保留一段时点“作为一段导入”，需要逐句写作时点“按句拆分导入”。"
+              value={directPasteText}
+              onChange={(event) => setDirectPasteText(event.currentTarget.value)}
+            />
+          </label>
+          <div className="paste-actions">
+            <button
+              type="button"
+              onClick={() => handleDirectPasteImport("single")}
+              disabled={!directPasteText.trim()}
+            >
+              <FileUp aria-hidden="true" size={17} />
+              作为一段导入
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => handleDirectPasteImport("split")}
+              disabled={!directPasteText.trim()}
+            >
+              <ListChecks aria-hidden="true" size={17} />
+              按句拆分导入
+            </button>
+          </div>
+          {directPasteText && (
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => setDirectPasteText("")}
+            >
+              <Eraser aria-hidden="true" size={17} />
+              清空粘贴区
+            </button>
+          )}
+          <p className="example-text">
+            示例：只翻译一段摘要时保留为一段；需要逐句修改时再拆分。
           </p>
           <p className="metric">{paragraphs.length} 个段落</p>
         </section>

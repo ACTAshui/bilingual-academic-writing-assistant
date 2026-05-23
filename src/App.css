@@ -421,6 +421,20 @@ select:focus {
   grid-template-columns: 1fr 1fr;
 }
 
+.paste-field textarea {
+  background: #ffffff;
+  border: 1px solid #b8c7be;
+  border-radius: 6px;
+  min-height: 110px;
+  padding: 0.55rem 0.65rem;
+}
+
+.paste-actions {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+}
+
 .settings-group {
   display: grid;
   gap: 0.9rem;

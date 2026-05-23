@@ -95,6 +95,38 @@ describe("App workbench", () => {
     expect(screen.getByText("英文")).toBeInTheDocument();
   });
 
+  it("imports pasted long text as one paragraph when requested", async () => {
+    render(<App />);
+    const longParagraph =
+      "第一句说明研究目标。第二句继续说明方法。第三句保留在同一个段落中。";
+
+    fireEvent.change(screen.getByLabelText("长文本粘贴区"), {
+      target: { value: longParagraph }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "作为一段导入" }));
+
+    expect(screen.getByLabelText("中文段落 1")).toHaveValue(longParagraph);
+    expect(screen.queryByLabelText("中文段落 2")).not.toBeInTheDocument();
+    expect(screen.getByText("1 个段落")).toBeInTheDocument();
+    expect(screen.getByText(/已作为 1 段导入/)).toBeInTheDocument();
+  });
+
+  it("imports pasted long text as separated sentence rows when requested", async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("长文本粘贴区"), {
+      target: {
+        value: "第一句说明研究目标。第二句继续说明方法。第三句给出结果。"
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "按句拆分导入" }));
+
+    expect(screen.getByLabelText("中文段落 1")).toHaveValue("第一句说明研究目标。");
+    expect(screen.getByLabelText("中文段落 2")).toHaveValue("第二句继续说明方法。");
+    expect(screen.getByLabelText("中文段落 3")).toHaveValue("第三句给出结果。");
+    expect(screen.getByText("3 个段落")).toBeInTheDocument();
+  });
+
   it("waits four seconds after manual edits before API auto-translating", async () => {
     stubChatCompletions(
       "Translated English sentence.",

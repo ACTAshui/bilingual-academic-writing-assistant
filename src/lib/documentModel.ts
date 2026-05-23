@@ -60,6 +60,23 @@ export function createParagraphs(text: string): Paragraph[] {
     });
 }
 
+export function createSingleParagraph(text: string): Paragraph[] {
+  const content = text.replace(/\r\n/g, "\n").trim();
+  if (!content) return [];
+
+  const detectedLanguage = detectTextLanguage(content);
+  const isEnglish = detectedLanguage === "en";
+
+  return [
+    createParagraph({
+      id: "p-1",
+      sourceZh: isEnglish ? "" : content,
+      draftEn: isEnglish ? content : "",
+      detectedLanguage
+    })
+  ];
+}
+
 export function splitTextIntoSegments(text: string): string[] {
   return text
     .replace(/\r\n/g, "\n")
