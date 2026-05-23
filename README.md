@@ -63,10 +63,19 @@ npm run build
 
 部署流程：
 
-```bash
+```powershell
 npm test -- --run
 npm run build
-git subtree push --prefix dist origin gh-pages
+
+$repo = (Get-Location).Path
+$temp = Join-Path $env:TEMP "bilingual-pages"
+Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+git clone --branch gh-pages --single-branch https://github.com/ACTAshui/bilingual-academic-writing-assistant.git $temp
+Get-ChildItem -LiteralPath $temp -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
+Copy-Item -Path (Join-Path $repo "dist\*") -Destination $temp -Recurse -Force
+git -C $temp add -A
+git -C $temp commit -m "deploy: update Pages"
+git -C $temp push origin gh-pages
 ```
 
 首次部署后，在仓库的 `Settings -> Pages` 中选择：
