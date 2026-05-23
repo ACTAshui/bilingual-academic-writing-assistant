@@ -3,6 +3,7 @@ import {
   createParagraphs,
   detectTextLanguage,
   getParagraph,
+  replaceParagraphWithSegments,
   splitTextIntoSegments,
   updateParagraphDraft,
   updateParagraphSource
@@ -126,6 +127,31 @@ describe("documentModel", () => {
     expect(changedDraft[0].draftEn).toBe("Revised sentence.");
     expect(changedDraft[0].status).toBe("edited");
     expect(changedDraft[0].history).toContain("Revised sentence.");
+  });
+
+  it("replaces one paragraph with sentence rows on the selected side", () => {
+    const paragraphs = createParagraphs("占位。");
+    const next = replaceParagraphWithSegments(paragraphs, "p-1", "en", [
+      "First sentence.",
+      "Second sentence."
+    ]);
+
+    expect(next).toEqual([
+      expect.objectContaining({
+        id: "p-1",
+        sourceZh: "",
+        draftEn: "First sentence.",
+        detectedLanguage: "en",
+        status: "drafted"
+      }),
+      expect.objectContaining({
+        id: "p-2",
+        sourceZh: "",
+        draftEn: "Second sentence.",
+        detectedLanguage: "en",
+        status: "drafted"
+      })
+    ]);
   });
 
   it("returns the selected paragraph by id", () => {

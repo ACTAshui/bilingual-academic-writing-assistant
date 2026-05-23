@@ -227,6 +227,56 @@ describe("App workbench", () => {
     expect(screen.getByLabelText("英文段落 1")).toHaveValue("");
   });
 
+  it("splits a pasted long paragraph into sentence rows", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.upload(
+      screen.getByLabelText("导入主稿"),
+      new File(["占位。"], "paper.txt", { type: "text/plain" })
+    );
+    await user.selectOptions(screen.getByLabelText("自动翻译方式"), "off");
+
+    fireEvent.paste(screen.getByLabelText("中文段落 1"), {
+      clipboardData: {
+        getData: () => "第一句。第二句说明方法。第三句给出结果。"
+      }
+    });
+
+    expect(screen.getByLabelText("中文段落 1")).toHaveValue("第一句。");
+    expect(screen.getByLabelText("中文段落 2")).toHaveValue("第二句说明方法。");
+    expect(screen.getByLabelText("中文段落 3")).toHaveValue("第三句给出结果。");
+    expect(screen.getByText("3 个段落")).toBeInTheDocument();
+    expect(screen.getByText(/已拆分为 3 个句子/)).toBeInTheDocument();
+  });
+
+  it("splits the selected paragraph from the toolbar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.upload(
+      screen.getByLabelText("导入主稿"),
+      new File(["占位。"], "paper.txt", { type: "text/plain" })
+    );
+    await user.selectOptions(screen.getByLabelText("自动翻译方式"), "off");
+    fireEvent.change(screen.getByLabelText("英文段落 1"), {
+      target: {
+        value: "This method is robust. It improves fatigue prediction."
+      }
+    });
+
+    await user.click(screen.getByRole("button", { name: "拆分当前段落" }));
+
+    expect(screen.getByLabelText("英文段落 1")).toHaveValue(
+      "This method is robust."
+    );
+    expect(screen.getByLabelText("英文段落 2")).toHaveValue(
+      "It improves fatigue prediction."
+    );
+    expect(screen.getByLabelText("中文段落 1")).toHaveValue("");
+    expect(screen.getByText("2 个段落")).toBeInTheDocument();
+  });
+
   it("adds reference papers and updates the style profile", async () => {
     const user = userEvent.setup();
     render(<App />);

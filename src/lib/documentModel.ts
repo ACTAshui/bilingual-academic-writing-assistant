@@ -1,4 +1,5 @@
 import type {
+  EditSide,
   Paragraph,
   ParagraphNote,
   ParagraphStatus,
@@ -70,6 +71,31 @@ export function splitTextIntoSegments(text: string): string[] {
     )
     .map((segment) => segment.trim())
     .filter(Boolean);
+}
+
+export function replaceParagraphWithSegments(
+  paragraphs: Paragraph[],
+  id: string,
+  side: EditSide,
+  segments: string[]
+): Paragraph[] {
+  const targetIndex = paragraphs.findIndex((paragraph) => paragraph.id === id);
+  const cleanSegments = segments.map((segment) => segment.trim()).filter(Boolean);
+  if (targetIndex === -1 || cleanSegments.length === 0) return paragraphs;
+
+  const replacement = cleanSegments.map((segment) =>
+    createParagraph({
+      id: "",
+      sourceZh: side === "zh" ? segment : "",
+      draftEn: side === "en" ? segment : ""
+    })
+  );
+
+  return reindexParagraphs([
+    ...paragraphs.slice(0, targetIndex),
+    ...replacement,
+    ...paragraphs.slice(targetIndex + 1)
+  ]);
 }
 
 export function getParagraph(paragraphs: Paragraph[], id: string) {
@@ -155,6 +181,13 @@ function createParagraph(
     notes: input.notes ?? [],
     history: input.history ?? []
   };
+}
+
+function reindexParagraphs(paragraphs: Paragraph[]): Paragraph[] {
+  return paragraphs.map((paragraph, index) => ({
+    ...paragraph,
+    id: `p-${index + 1}`
+  }));
 }
 
 function detectParagraphLanguage(sourceZh: string, draftEn: string): TextLanguage {

@@ -1,4 +1,11 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   BookOpen,
   Download,
@@ -25,6 +32,8 @@ import {
   clearParagraph,
   createParagraphs,
   getParagraph,
+  replaceParagraphWithSegments,
+  splitTextIntoSegments,
   updateParagraphNotes,
   updateParagraphDraft,
   updateParagraphSource
@@ -63,6 +72,10 @@ type TranslationJob = {
 type GeneratedText = {
   text: string;
   notes: string[];
+};
+type SplitCandidate = {
+  side: EditSide;
+  segments: string[];
 };
 
 const AUTO_TRANSLATE_DELAY_MS = 4000;
@@ -115,6 +128,9 @@ export default function App() {
   );
   const selectedParagraph =
     selectedId === null ? undefined : getParagraph(paragraphs, selectedId);
+  const selectedSplitCandidate = selectedParagraph
+    ? getSplitCandidate(selectedParagraph)
+    : undefined;
 
   useEffect(() => {
     clearAutoTranslateTimers();
@@ -171,6 +187,63 @@ export default function App() {
   function handleDraftChange(id: string, value: string) {
     setParagraphs((current) => updateParagraphDraft(current, id, value));
     scheduleAutoTranslate(id, "en", value);
+  }
+
+  function handleParagraphPaste(
+    event: ClipboardEvent<HTMLTextAreaElement>,
+    id: string,
+    side: EditSide
+  ) {
+    const pastedText =
+      event.clipboardData.getData("text/plain") ||
+      event.clipboardData.getData("text");
+    const segments = splitTextIntoSegments(pastedText);
+    if (segments.length <= 1) return;
+
+    event.preventDefault();
+    splitParagraphIntoRows(id, side, segments);
+  }
+
+  function handleSplitSelectedParagraph() {
+    if (!selectedParagraph || !selectedSplitCandidate) {
+      setStatus("当前段落未识别到可拆分的多个句子。");
+      return;
+    }
+
+    splitParagraphIntoRows(
+      selectedParagraph.id,
+      selectedSplitCandidate.side,
+      selectedSplitCandidate.segments
+    );
+  }
+
+  function splitParagraphIntoRows(
+    id: string,
+    side: EditSide,
+    segments: string[]
+  ) {
+    const cleanSegments = segments.map((segment) => segment.trim()).filter(Boolean);
+    if (cleanSegments.length <= 1) {
+      setStatus("当前内容未识别到可拆分的多个句子。");
+      return;
+    }
+
+    const targetIndex = paragraphs.findIndex((paragraph) => paragraph.id === id);
+    if (targetIndex === -1) return;
+
+    clearAutoTranslateTimers();
+    const nextParagraphs = replaceParagraphWithSegments(
+      paragraphs,
+      id,
+      side,
+      cleanSegments
+    );
+    setParagraphs(nextParagraphs);
+    setSelectedId(nextParagraphs[targetIndex]?.id ?? nextParagraphs[0]?.id ?? null);
+    setCheckedIds([]);
+    setExportStart(nextParagraphs.length > 0 ? "1" : "0");
+    setExportEnd(String(nextParagraphs.length));
+    setStatus(`已拆分为 ${cleanSegments.length} 个句子，可逐句分离写作。`);
   }
 
   function handleProviderChange(nextProvider: AiProvider) {
@@ -1047,6 +1120,15 @@ export default function App() {
             <button
               className="secondary-button"
               type="button"
+              onClick={handleSplitSelectedParagraph}
+              disabled={!selectedSplitCandidate}
+            >
+              <ListChecks aria-hidden="true" size={16} />
+              拆分当前段落
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
               onClick={() => void handleTranslateCheckedFrom("zh")}
               disabled={checkedIds.length === 0}
             >
@@ -1101,6 +1183,9 @@ export default function App() {
               <p className="example-text">
                 示例英文段落：This study proposes a deep learning method for fatigue analysis of complex structures.
               </p>
+              <p className="example-text">
+                长文段可直接粘贴到任意一侧，系统会按论文句子边界拆成一句一行。
+              </p>
             </div>
           ) : (
             paragraphs.map((paragraph, index) => (
@@ -1146,6 +1231,7 @@ export default function App() {
                     onChange={(event) =>
                       handleSourceChange(paragraph.id, event.currentTarget.value)
                     }
+                    onPaste={(event) => handleParagraphPaste(event, paragraph.id, "zh")}
                   />
                 </label>
                 <label>
@@ -1156,6 +1242,7 @@ export default function App() {
                     onChange={(event) =>
                       handleDraftChange(paragraph.id, event.currentTarget.value)
                     }
+                    onPaste={(event) => handleParagraphPaste(event, paragraph.id, "en")}
                   />
                 </label>
                 {zhNotes.length > 0 && (
@@ -1357,6 +1444,23 @@ function getLanguageLabel(paragraph: Paragraph) {
 
 function getParagraphNotes(paragraph: Paragraph, side: EditSide) {
   return paragraph.notes.filter((note) => note.side === side);
+}
+
+function getSplitCandidate(paragraph: Paragraph): SplitCandidate | undefined {
+  const sourceSegments = splitTextIntoSegments(paragraph.sourceZh);
+  const draftSegments = splitTextIntoSegments(paragraph.draftEn);
+
+  if (
+    sourceSegments.length > 1 &&
+    sourceSegments.length >= draftSegments.length
+  ) {
+    return { side: "zh", segments: sourceSegments };
+  }
+  if (draftSegments.length > 1) {
+    return { side: "en", segments: draftSegments };
+  }
+
+  return undefined;
 }
 
 function toParagraphNotes(notes: string[], side: EditSide): ParagraphNote[] {
