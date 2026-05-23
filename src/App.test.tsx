@@ -370,6 +370,9 @@ describe("App workbench", () => {
     expect(screen.getByLabelText("英文段落 1 修订说明")).toHaveTextContent(
       "修订说明：压缩句子并使用更正式的动词。"
     );
+    expect(screen.getByLabelText("段落 1 修订说明行")).toContainElement(
+      screen.getByLabelText("英文段落 1 修订说明")
+    );
   });
 
   it("shows standalone revision notes without replacing existing draft text", async () => {
@@ -502,6 +505,47 @@ describe("App workbench", () => {
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("translate.googleapis.com")
     );
+  });
+
+  it("quick-translates checked paragraphs from the selected action", async () => {
+    const quickTranslations = [
+      "The first method is proposed.",
+      "The second experiment is conducted.",
+      "The third result is analyzed."
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json([[[quickTranslations.shift() ?? "", ""]]])
+      )
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.upload(
+      screen.getByLabelText("导入主稿"),
+      new File(["提出第一种方法。\n\n开展第二个实验。\n\n分析第三个结果。"], "paper.txt", {
+        type: "text/plain"
+      })
+    );
+
+    await user.click(await screen.findByLabelText("选择段落 1"));
+    await user.click(screen.getByLabelText("选择段落 2"));
+    await user.click(screen.getByLabelText("选择段落 3"));
+    await user.click(screen.getByRole("button", { name: "快速翻译选中段落" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("英文段落 1")).toHaveValue(
+        "The first method is proposed."
+      );
+      expect(screen.getByLabelText("英文段落 2")).toHaveValue(
+        "The second experiment is conducted."
+      );
+      expect(screen.getByLabelText("英文段落 3")).toHaveValue(
+        "The third result is analyzed."
+      );
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("fills endpoint and model when a provider preset is selected", async () => {

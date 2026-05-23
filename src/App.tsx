@@ -507,7 +507,7 @@ export default function App() {
     }
   }
 
-  async function handleQuickTranslateSelected() {
+  async function handleQuickTranslateCurrent() {
     if (!selectedParagraph) {
       setStatus("请先选择一个段落");
       return;
@@ -542,6 +542,33 @@ export default function App() {
       setStatus(result.notes);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "快速翻译失败");
+    }
+  }
+
+  async function handleQuickTranslateChecked() {
+    const checkedSet = new Set(checkedIds);
+    const jobs = paragraphs
+      .filter((paragraph) => checkedSet.has(paragraph.id))
+      .map(getQuickTranslationJob)
+      .filter((job): job is TranslationJob => job !== null);
+
+    if (checkedIds.length === 0) {
+      setStatus("请先勾选要快速翻译的段落。");
+      return;
+    }
+    if (jobs.length === 0) {
+      setStatus("选中段落没有可快速翻译的内容。");
+      return;
+    }
+
+    setStatus(`正在快速翻译 ${jobs.length} 个选中段落...`);
+
+    try {
+      const result = await runQuickTranslationJobs(jobs, paragraphs);
+      setParagraphs(result.nextParagraphs);
+      setStatus(`已快速翻译选中段落 ${result.translatedCount} 个。`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "选中段落快速翻译失败");
     }
   }
 
@@ -694,6 +721,48 @@ export default function App() {
           toParagraphNotes(item.notes, item.targetLanguage)
         );
       }
+    }
+
+    return { nextParagraphs, translatedCount };
+  }
+
+  async function runQuickTranslationJobs(
+    jobs: TranslationJob[],
+    baseParagraphs: Paragraph[]
+  ) {
+    const completed: Array<(TranslationJob & GeneratedText) | undefined> = [];
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < jobs.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const job = jobs[index];
+        const result = await runQuickTranslation({
+          provider: quickTranslator,
+          sourceText: job.sourceText,
+          targetLanguage: job.targetLanguage
+        });
+        completed[index] = { ...job, ...splitGeneratedText(result) };
+      }
+    }
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(BATCH_TRANSLATION_CONCURRENCY, jobs.length) },
+        () => worker()
+      )
+    );
+
+    let nextParagraphs = baseParagraphs;
+    let translatedCount = 0;
+    for (const item of completed) {
+      if (!item?.text) continue;
+      nextParagraphs =
+        item.targetLanguage === "en"
+          ? updateParagraphDraft(nextParagraphs, item.id, item.text)
+          : updateParagraphSource(nextParagraphs, item.id, item.text);
+      translatedCount += 1;
     }
 
     return { nextParagraphs, translatedCount };
@@ -1179,7 +1248,7 @@ export default function App() {
             <button
               className="secondary-button"
               type="button"
-              onClick={() => void handleQuickTranslateSelected()}
+              onClick={() => void handleQuickTranslateCurrent()}
               disabled={
                 !selectedParagraph?.sourceZh.trim() &&
                 !selectedParagraph?.draftEn.trim()
@@ -1316,22 +1385,34 @@ export default function App() {
                     onPaste={(event) => handleParagraphPaste(event, paragraph.id, "en")}
                   />
                 </label>
-                {zhNotes.length > 0 && (
+                {(zhNotes.length > 0 || enNotes.length > 0) && (
                   <div
-                    aria-label={`中文段落 ${index + 1} 修订说明`}
-                    className="paragraph-notes note-zh"
+                    aria-label={`段落 ${index + 1} 修订说明行`}
+                    className="paragraph-note-row"
                   >
-                    <span>中文修订说明</span>
-                    <p>{zhNotes[0].text}</p>
-                  </div>
-                )}
-                {enNotes.length > 0 && (
-                  <div
-                    aria-label={`英文段落 ${index + 1} 修订说明`}
-                    className="paragraph-notes note-en"
-                  >
-                    <span>英文修订说明</span>
-                    <p>{enNotes[0].text}</p>
+                    <div className="note-row-meta" aria-hidden="true" />
+                    {zhNotes.length > 0 ? (
+                      <div
+                        aria-label={`中文段落 ${index + 1} 修订说明`}
+                        className="paragraph-notes note-zh"
+                      >
+                        <span>中文修订说明</span>
+                        <p>{zhNotes[0].text}</p>
+                      </div>
+                    ) : (
+                      <div className="paragraph-notes note-empty" aria-hidden="true" />
+                    )}
+                    {enNotes.length > 0 ? (
+                      <div
+                        aria-label={`英文段落 ${index + 1} 修订说明`}
+                        className="paragraph-notes note-en"
+                      >
+                        <span>英文修订说明</span>
+                        <p>{enNotes[0].text}</p>
+                      </div>
+                    ) : (
+                      <div className="paragraph-notes note-empty" aria-hidden="true" />
+                    )}
                   </div>
                 )}
                     </>
@@ -1430,12 +1511,13 @@ export default function App() {
             <div className="action-option">
               <button
                 type="button"
-                onClick={() => void handleQuickTranslateSelected()}
+                onClick={() => void handleQuickTranslateChecked()}
+                disabled={checkedIds.length === 0}
               >
                 <Wand2 aria-hidden="true" size={17} />
                 快速翻译选中段落
               </button>
-              <p className="example-text">示例：跳过论文风格改写，直接把当前选中段落译到另一侧。</p>
+              <p className="example-text">示例：勾选多段后跳过论文风格改写，直接把选中段落译到另一侧。</p>
             </div>
             <div className="action-option">
               <button type="button" onClick={() => void handleAiAction("translate")}>
@@ -1515,6 +1597,20 @@ function getLanguageLabel(paragraph: Paragraph) {
 
 function getParagraphNotes(paragraph: Paragraph, side: EditSide) {
   return paragraph.notes.filter((note) => note.side === side);
+}
+
+function getQuickTranslationJob(paragraph: Paragraph): TranslationJob | null {
+  const sourceSide = paragraph.sourceZh.trim() ? "zh" : "en";
+  const sourceText =
+    sourceSide === "zh" ? paragraph.sourceZh.trim() : paragraph.draftEn.trim();
+  if (!sourceText) return null;
+
+  return {
+    id: paragraph.id,
+    sourceSide,
+    sourceText,
+    targetLanguage: sourceSide === "zh" ? "en" : "zh"
+  };
 }
 
 function getSplitCandidate(paragraph: Paragraph): SplitCandidate | undefined {
